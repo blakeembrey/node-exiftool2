@@ -90,7 +90,9 @@ export class Exec extends Writable implements Exec {
     this.process.stderr.on('error', this.emit.bind(this, 'error'))
 
     this.process.stdin.on('error', (err: Error) => {
-      if (!parsed || (err as any).code !== 'EPIPE') {
+      const code = (err as any).code
+
+      if (!parsed || (code !== 'EPIPE' && code !== 'ECONNRESET')) {
         this.emit('error', err)
       }
     })
