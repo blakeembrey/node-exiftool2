@@ -1,4 +1,4 @@
-import { PassThrough } from 'stream'
+import { Writable } from 'stream'
 import { spawn, spawnSync, ChildProcess } from 'child_process'
 import { join } from 'path'
 
@@ -16,9 +16,9 @@ const SPAWN_OPTIONS = {
 }
 
 /**
- * Exec interface extends `PassThrough`.
+ * Exec interface extends `Writable`.
  */
-export interface Exec extends PassThrough {
+export interface Exec extends Writable {
   on (event: 'exif', listener: (exif: any[]) => void): this
   on (event: 'error', listener: (error: Error) => void): this
   on (event: string, listener: Function): this
@@ -29,7 +29,78 @@ export interface Exec extends PassThrough {
 /**
  * Exec interface for `exiftool`.
  */
-export class Exec extends PassThrough implements Exec {
+export class Exec extends Writable implements Exec {
+
+  process: ChildProcess
+
+  constructor (args: string[]) {
+    super()
+
+    this.process = spawn(BIN_PATH, args)
+
+    let stdout = ''
+    let stderr = ''
+    let parsed = false
+
+    this.process.stdout.on('data', (chunk: Buffer) => {
+      let offset: number
+
+      stdout += chunk.toString('utf8')
+
+      // tslint:disable-next-line
+      while ((offset = stdout.indexOf(DELIMITER)) > -1) {
+        const len = offset + DELIMITER.length
+        const data = stdout.substr(0, len)
+
+        parsed = true
+        stdout = stdout.substr(len)
+
+        try {
+          this.emit('exif', JSON.parse(data))
+        } catch (err) {
+          this.emit('error', err)
+        }
+      }
+    })
+
+    this.process.stderr.on('data', (chunk: Buffer) => {
+      let offset: number
+
+      stderr += chunk.toString('utf8')
+
+      // tslint:disable-next-line
+      while ((offset = stderr.indexOf('\n')) > -1) {
+        const data = stderr.substr(0, offset)
+
+        parsed = true
+        stderr = stderr.substr(offset + 1)
+
+        if (data.length) {
+          this.emit('error', new Error(data))
+        }
+      }
+    })
+
+    this.process.stdout.on('end', () => {
+      this.end() // Mark the stream as done.
+      stdout = stderr = ''
+    })
+
+    this.process.stdout.on('error', this.emit.bind(this, 'error'))
+    this.process.stderr.on('error', this.emit.bind(this, 'error'))
+
+    this.process.stdin.on('error', (err: Error) => {
+      if (!parsed || (err as any).code !== 'EPIPE') {
+        this.emit('error', err)
+      }
+    })
+
+    this.on('finish', () => this.process.stdin.end())
+  }
+
+  _write (chunk: Buffer, encoding: string, cb: Function) {
+    return this.process.stdin.write(chunk, encoding, () => cb())
+  }
 
   send (args: string[]) {
     return this.write(`-q\n-json\n${args.join('\n')}\n-execute\n`)
@@ -42,78 +113,24 @@ export class Exec extends PassThrough implements Exec {
 }
 
 /**
- * Wrap the stream handler.
- */
-function wrap (process: ChildProcess): Exec {
-  const stream = new Exec()
-  let stdout = ''
-  let stderr = ''
-
-  stream.pipe(process.stdin)
-
-  process.stdout.on('data', (chunk: Buffer) => {
-    let offset: number
-
-    stdout += chunk
-
-    // tslint:disable-next-line
-    while ((offset = stdout.indexOf(DELIMITER)) > -1) {
-      const len = offset + DELIMITER.length
-      const data = stdout.substr(0, len)
-
-      stdout = stdout.substr(len)
-
-      try {
-        stream.emit('exif', JSON.parse(data))
-      } catch (err) {
-        stream.emit('error', err)
-      }
-    }
-  })
-
-  process.stderr.on('data', (chunk: Buffer) => {
-    let offset: number
-
-    stderr += chunk
-
-    // tslint:disable-next-line
-    while ((offset = stderr.indexOf('\n')) > -1) {
-      const data = stderr.substr(0, offset)
-
-      stderr = stderr.substr(offset + 1)
-
-      if (data.length) {
-        stream.emit('error', new Error(data))
-      }
-    }
-  })
-
-  process.on('exit', () => {
-    stdout = stderr = ''
-  })
-
-  return stream
-}
-
-/**
  * Handle `-stay_open` arguments.
  */
 export function open () {
-  return wrap(spawn(BIN_PATH, ['-stay_open', 'True', '-@', '-'], SPAWN_OPTIONS))
+  return new Exec(['-stay_open', 'True', '-@', '-'])
 }
 
 /**
  * Execute a command, returning on data.
  */
 export function exec (args: string[]) {
-  return wrap(spawn(BIN_PATH, ['-q', '-json'].concat(args), SPAWN_OPTIONS))
+  return new Exec(['-q', '-json', ...args])
 }
 
 /**
  * Synchronous execution of `exiftool`.
  */
 export function execSync (args: string[]) {
-  const { stdout, stderr } = spawnSync(BIN_PATH, ['-q', '-json'].concat(args), SPAWN_OPTIONS)
+  const { stdout, stderr } = spawnSync(BIN_PATH, ['-q', '-json', ...args], SPAWN_OPTIONS)
   const stdoutOffset = stdout.indexOf(DELIMITER)
   const stderrOffset = stderr.indexOf('\n')
 

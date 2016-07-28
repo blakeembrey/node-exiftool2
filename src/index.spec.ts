@@ -19,17 +19,40 @@ test('exiftool2', t => {
     })
   })
 
-  t.test('pipe jpeg', t => {
+  t.test('pipe jpeg with trailers', t => {
     const exif = exec(['-'])
-
-    createReadStream(join(FIXTURE_DIR, 'subway.jpeg')).pipe(exif)
+    const read = createReadStream(join(FIXTURE_DIR, 'subway.jpeg'))
+    let ended = false
 
     exif.on('exif', (exif) => {
+      console.log('exif')
+
+      t.equal(ended, true)
       t.equal(exif.length, 1)
       t.equal(exif[0].FileType, 'JPEG')
-
       t.end()
     })
+
+    read.on('end', () => ended = true)
+
+    read.pipe(exif)
+  })
+
+  t.test('pipe jpeg fast', t => {
+    const exif = exec(['-fast', '-'])
+    const read = createReadStream(join(FIXTURE_DIR, 'subway.jpeg'))
+    let ended = false
+
+    exif.on('exif', (exif) => {
+      t.equal(ended, false)
+      t.equal(exif.length, 1)
+      t.equal(exif[0].FileType, 'JPEG')
+      t.end()
+    })
+
+    read.on('end', () => ended = true)
+
+    read.pipe(exif)
   })
 
   t.test('filename', t => {
