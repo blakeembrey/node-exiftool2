@@ -23,22 +23,32 @@ import { exec, open } from 'exiftool2'
 // Read more: http://linux.die.net/man/1/exiftool
 const exif = exec(['-fast', 'placeholder.png'])
 
+// The `exif` result is always an array of exif objects from `exiftool`.
 exif.on('exif', ...)
 exif.on('error', ...)
+
+// Supports streaming into `exiftool`.
+const exif = exec(['-fast', '-'])
+
+// Remember you can close the connection early on exif data.
+exif.on('exif', ...)
+
+// Pipe directly into `exiftool` (E.g. over HTTP).
+createReadStream('placeholder.png').pipe(exif)
 
 // Create an instance that defaults to `-stay_open`.
 // Identical to `exec`, except for the default arguments.
 // Default arguments: -stay_open True -@ -
 const exif = open(['-fast', 'placeholder.png'])
 
+// Multiple `exif` events will emit in `open` mode.
+exif.on('exif', ...)
+
 // Push commands to `-execute`. Prepends `-q -json` to each `send()`.
 exif.send(['placeholder.png'])
 
-// Pushes `-stay_open False` to be executed, closing `exiftool`.
+// Sends `-stay_open False`, causing `exiftool` to close.
 exif.close()
-
-exif.on('exif', ...)
-exif.on('error', ...)
 ```
 
 ## License

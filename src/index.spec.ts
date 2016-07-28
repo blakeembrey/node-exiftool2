@@ -25,8 +25,6 @@ test('exiftool2', t => {
     let ended = false
 
     exif.on('exif', (exif) => {
-      console.log('exif')
-
       t.equal(ended, true)
       t.equal(exif.length, 1)
       t.equal(exif[0].FileType, 'JPEG')
