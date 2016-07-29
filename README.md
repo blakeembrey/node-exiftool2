@@ -47,6 +47,10 @@ exif.on('exif', ...)
 // Push commands to `-execute`. Prepends `-q -json` to each `send()`.
 exif.send(['placeholder.png'])
 
+// You also also stream with `-stay_open`.
+// Both `send` and `stream` accept a callback as the second argument.
+createReadStream('placeholder.png').pipe(exif.stream())
+
 // Sends `-stay_open False`, causing `exiftool` to close.
 exif.close()
 ```

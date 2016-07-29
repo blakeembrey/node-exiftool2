@@ -1,6 +1,8 @@
 import { Writable } from 'stream'
 import { spawn, spawnSync, ChildProcess } from 'child_process'
 import { join } from 'path'
+import { createWriteStream, WriteStream, unlink } from 'fs'
+import { tmpdir } from 'os'
 
 /**
  * Tooling constants.
@@ -32,11 +34,13 @@ export interface Exec extends Writable {
 export class Exec extends Writable implements Exec {
 
   process: ChildProcess
+  pending: number
 
-  constructor (args: string[]) {
+  constructor (args: string[], pending: number) {
     super()
 
     this.process = spawn(BIN_PATH, args)
+    this.pending = pending
 
     let stdout = ''
     let stderr = ''
@@ -56,6 +60,7 @@ export class Exec extends Writable implements Exec {
         stdout = stdout.substr(len)
 
         try {
+          this.pending--
           this.emit('exif', JSON.parse(data))
         } catch (err) {
           this.emit('error', err)
@@ -89,11 +94,11 @@ export class Exec extends Writable implements Exec {
     this.process.stdout.on('error', this.emit.bind(this, 'error'))
     this.process.stderr.on('error', this.emit.bind(this, 'error'))
 
-    this.process.stdin.on('error', (err: Error) => {
-      const code = (err as any).code
+    this.process.stdin.on('error', (error: Error) => {
+      const code = (error as any).code
 
       if (!parsed || (code !== 'EPIPE' && code !== 'ECONNRESET')) {
-        this.emit('error', err)
+        this.emit('error', error)
       }
     })
 
@@ -104,8 +109,60 @@ export class Exec extends Writable implements Exec {
     return this.process.stdin.write(chunk, encoding, () => cb())
   }
 
-  send (args: string[]) {
-    return this.write(`-q\n-json\n${args.join('\n')}\n-execute\n`)
+  send (args?: string[], cb?: (error?: Error, exif?: any[]) => void) {
+    // Allow callbacks for simpler handling of multiple `exif` events.
+    if (cb) {
+      const len = this.pending
+      let count = 0
+
+      const handle = (error: Error, exif?: any[]) => {
+        // Ignore previously queued exif events.
+        if (len > count) {
+          count++
+          return
+        }
+
+        this.removeListener('exif', onexif)
+        this.removeListener('error', onerror)
+
+        return cb(error, exif)
+      }
+
+      const onexif = (exif: any[]) => handle(null, exif)
+      const onerror = (error: Error) => handle(error)
+
+      this.on('exif', onexif)
+      this.on('error', onerror)
+    }
+
+    // Increment the queue count. Exiftool emits are ordered.
+    this.pending++
+
+    if (args) {
+      for (const arg of args) {
+        this.write(`${arg}\n`)
+      }
+    }
+
+    return this.write('-q\n-json\n-execute\n')
+  }
+
+  stream (args: string[] = [], cb?: (error?: Error, exif?: any[]) => void): WriteStream {
+    const filename = join(tmpdir(), `exiftool2_${Math.random().toString(36).substr(2)}`)
+    const stream = createWriteStream(filename)
+
+    this.send([filename, ...args], (error, exif) => {
+      stream.end()
+
+      // Remove the temporary file on parse.
+      unlink(filename, (unlinkError) => {
+        if (cb) {
+          return cb(error || unlinkError, exif)
+        }
+      })
+    })
+
+    return stream
   }
 
   close () {
@@ -118,14 +175,14 @@ export class Exec extends Writable implements Exec {
  * Handle `-stay_open` arguments.
  */
 export function open () {
-  return new Exec(['-stay_open', 'True', '-@', '-'])
+  return new Exec(['-stay_open', 'True', '-@', '-'], 0)
 }
 
 /**
  * Execute a command, returning on data.
  */
 export function exec (args: string[]) {
-  return new Exec(['-q', '-json', ...args])
+  return new Exec(['-q', '-json', ...args], 1)
 }
 
 /**

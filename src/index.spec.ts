@@ -113,7 +113,7 @@ test('exiftool2', t => {
     let len = 0
 
     exif.send([join(FIXTURE_DIR, 'placeholder.png')])
-    exif.send([join(FIXTURE_DIR, 'placeholder.png')])
+    exif.send([join(FIXTURE_DIR, 'subway.jpeg')])
     exif.send([join(FIXTURE_DIR, 'placeholder.png')])
     exif.close()
 
@@ -121,12 +121,34 @@ test('exiftool2', t => {
       len++
 
       t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, 'PNG')
+      t.equal(exif[0].FileType, len === 2 ? 'JPEG' : 'PNG')
 
       if (len === 3) {
         t.end()
       }
     })
+  })
+
+  t.test('stream multiple files', t => {
+    const exif = open()
+    let len = 0
+
+    function cb (err: Error, exif: any[]) {
+      len++
+
+      t.equal(exif.length, 1)
+      t.equal(exif[0].FileType, len === 2 ? 'JPEG' : 'PNG')
+
+      if (len === 3) {
+        t.end()
+      }
+    }
+
+    createReadStream(join(FIXTURE_DIR, 'placeholder.png')).pipe(exif.stream([], cb))
+    createReadStream(join(FIXTURE_DIR, 'subway.jpeg')).pipe(exif.stream([], cb))
+    createReadStream(join(FIXTURE_DIR, 'placeholder.png')).pipe(exif.stream([], cb))
+
+    exif.close()
   })
 
   t.test('spawn sync', t => {
