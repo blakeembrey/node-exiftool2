@@ -1,6 +1,6 @@
 {
   "name": "exiftool2",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Wrapper for efficiently working with `exiftool`",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
