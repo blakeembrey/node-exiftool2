@@ -44,7 +44,6 @@ export class Exec extends Writable implements Exec {
 
     let stdout = ''
     let stderr = ''
-    let parsed = false
 
     this.process.stdout.on('data', (chunk: Buffer) => {
       let offset: number
@@ -56,7 +55,6 @@ export class Exec extends Writable implements Exec {
         const len = offset + DELIMITER.length
         const data = stdout.substr(0, len)
 
-        parsed = true
         stdout = stdout.substr(len)
 
         try {
@@ -77,18 +75,13 @@ export class Exec extends Writable implements Exec {
       while ((offset = stderr.indexOf('\n')) > -1) {
         const data = stderr.substr(0, offset)
 
-        parsed = true
         stderr = stderr.substr(offset + 1)
 
         if (data.length) {
+          this.pending--
           this.emit('error', new Error(data))
         }
       }
-    })
-
-    this.process.stdout.on('end', () => {
-      this.end() // Mark the stream as done.
-      stdout = stderr = ''
     })
 
     this.process.stdout.on('error', this.emit.bind(this, 'error'))
@@ -97,16 +90,22 @@ export class Exec extends Writable implements Exec {
     this.process.stdin.on('error', (error: Error) => {
       const code = (error as any).code
 
-      if (!parsed || (code !== 'EPIPE' && code !== 'ECONNRESET')) {
+      if (code !== 'EPIPE' && code !== 'ECONNRESET') {
         this.emit('error', error)
       }
     })
-
-    this.on('finish', () => this.process.stdin.end())
   }
 
   _write (chunk: Buffer, encoding: string, cb: Function) {
+    if (!this.process.stdin.writable) {
+      return cb()
+    }
+
     return this.process.stdin.write(chunk, encoding, () => cb())
+  }
+
+  end () {
+    return this.process.stdin.end.apply(this.process.stdin, arguments)
   }
 
   send (args?: string[], cb?: (error?: Error, exif?: any[]) => void) {
