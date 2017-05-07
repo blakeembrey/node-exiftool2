@@ -140,7 +140,7 @@ test('exiftool2', t => {
       t.equal(exif[0].FileType, len === 2 ? 'JPEG' : 'PNG')
 
       if (len === 3) {
-        t.end()
+        t.end(err)
       }
     }
 

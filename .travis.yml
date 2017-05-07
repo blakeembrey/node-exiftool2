@@ -7,7 +7,6 @@ notifications:
     on_failure: change
 
 node_js:
-  - "iojs"
   - "4"
   - "stable"
 
