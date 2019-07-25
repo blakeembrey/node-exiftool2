@@ -4,9 +4,10 @@
 [![NPM downloads][downloads-image]][downloads-url]
 [![Build status][travis-image]][travis-url]
 [![Test coverage][coveralls-image]][coveralls-url]
-[![Greenkeeper badge](https://badges.greenkeeper.io/blakeembrey/node-exiftool2.svg)](https://greenkeeper.io/)
 
 > Wrapper for efficiently working with `exiftool`.
+
+**I'd also recommend using [exiftool-vendored](https://exiftool-vendored.js.org/)!**
 
 ## Installation
 
