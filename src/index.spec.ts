@@ -20,7 +20,7 @@ describe("exiftool2", () => {
 
   it("should pipe jpeg with trailers", done => {
     const exiftool = exec("-");
-    const read = createReadStream(join(FIXTURE_DIR, "subway.jpeg"));
+    const stream = createReadStream(join(FIXTURE_DIR, "subway.jpeg"));
     let ended = false;
 
     exiftool.on("exif", exif => {
@@ -31,25 +31,27 @@ describe("exiftool2", () => {
       return done();
     });
 
-    read.on("end", () => (ended = true));
-    read.pipe(exiftool);
+    stream.on("end", () => (ended = true));
+    stream.pipe(exiftool);
   });
 
   it("should pipe jpeg fast", done => {
     const exiftool = exec("-fast", "-");
-    const read = createReadStream(join(FIXTURE_DIR, "subway.jpeg"));
+    const stream = createReadStream(join(FIXTURE_DIR, "subway.jpeg"));
     let ended = false;
 
     exiftool.on("exif", exif => {
       expect(ended).toEqual(false);
       expect(exif.length).toEqual(1);
       expect(exif[0].FileType).toEqual("JPEG");
+    });
 
+    stream.on("end", () => {
+      ended = true;
       return done();
     });
 
-    read.on("end", () => (ended = true));
-    read.pipe(exiftool);
+    stream.pipe(exiftool);
   });
 
   it("should read from filename", done => {

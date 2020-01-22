@@ -85,7 +85,11 @@ export class Exec extends Writable {
 
   _write(chunk: Buffer, encoding: string, cb: (error?: Error | null) => void) {
     if (!this.process.stdin || !this.process.stdin.writable) return cb();
-    return this.process.stdin.write(chunk, encoding, cb);
+
+    return this.process.stdin.write(chunk, encoding, err => {
+      if (err && (err as any).code === "EPIPE") return cb();
+      return cb(err);
+    });
   }
 
   _destroy() {
