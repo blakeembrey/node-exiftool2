@@ -1,6 +1,6 @@
 import { createReadStream } from "fs";
 import { join } from "path";
-import { exec, open } from "./index";
+import { exec, open, ExifData } from "./index";
 
 const FIXTURE_DIR = join(__dirname, "../test/fixtures");
 
@@ -100,10 +100,11 @@ describe("exiftool2", () => {
   it("should parse multiple exif data", done => {
     const exiftool = exec("-common", FIXTURE_DIR);
 
-    exiftool.on("exif", exif => {
-      expect(exif.length).toEqual(2);
-      expect(exif[0].FileName).toEqual("placeholder.png");
-      expect(exif[1].FileName).toEqual("subway.jpeg");
+    exiftool.on("exif", (exif: ExifData) => {
+      expect(exif.map(x => x.FileName).sort()).toEqual([
+        "placeholder.png",
+        "subway.jpeg"
+      ]);
 
       return done();
     });

@@ -8,6 +8,11 @@ import { promisify } from "util";
 const pUnlink = promisify(unlink);
 
 /**
+ * Exif data type.
+ */
+export type ExifData = ReadonlyArray<Record<string, any>>;
+
+/**
  * Tooling constants.
  */
 const BIN_PATH = join(__dirname, "../vendor/Image-ExifTool-11.84/exiftool");
@@ -103,13 +108,13 @@ export class Exec extends Writable {
     return this.command(...args, "-q", "-json", "-execute");
   }
 
-  send(...args: string[]): Promise<any[]> {
+  send(...args: string[]): Promise<ExifData> {
     let remaining = this.pending;
     this.pending++; // Track pending emit.
     this.execute(...args); // Send args to `execute`.
 
     return new Promise((resolve, reject) => {
-      const onexif = (exif: any[]) => {
+      const onexif = (exif: ExifData) => {
         if (remaining-- > 0) return;
         removeListeners();
         return resolve(exif);
@@ -131,7 +136,7 @@ export class Exec extends Writable {
     });
   }
 
-  read(readable: Readable, ...args: string[]): Promise<any[]> {
+  read(readable: Readable, ...args: string[]): Promise<ExifData> {
     const tmpFilename = join(
       tmpdir(),
       `exiftool2_${Math.random()
