@@ -1,170 +1,149 @@
-import test = require('blue-tape')
-import { createReadStream } from 'fs'
-import { join } from 'path'
-import { exec, open, execSync } from './index'
+import { createReadStream } from "fs";
+import { join } from "path";
+import { exec, open } from "./index";
 
-const FIXTURE_DIR = join(__dirname, '../test/fixtures')
+const FIXTURE_DIR = join(__dirname, "../test/fixtures");
 
-test('exiftool2', t => {
-  t.test('pipe png', t => {
-    const exif = exec(['-fast', '-'])
+describe("exiftool2", () => {
+  it("should pipe png", done => {
+    const exiftool = exec("-fast", "-");
 
-    createReadStream(join(FIXTURE_DIR, 'placeholder.png')).pipe(exif)
+    createReadStream(join(FIXTURE_DIR, "placeholder.png")).pipe(exiftool);
 
-    exif.on('exif', (exif) => {
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, 'PNG')
+    exiftool.on("exif", exif => {
+      expect(exif.length).toEqual(1);
+      expect(exif[0].FileType).toEqual("PNG");
 
-      t.end()
-    })
-  })
+      return done();
+    });
+  });
 
-  t.test('pipe jpeg with trailers', t => {
-    const exif = exec(['-'])
-    const read = createReadStream(join(FIXTURE_DIR, 'subway.jpeg'))
-    let ended = false
+  it("should pipe jpeg with trailers", done => {
+    const exiftool = exec("-");
+    const read = createReadStream(join(FIXTURE_DIR, "subway.jpeg"));
+    let ended = false;
 
-    exif.on('exif', (exif) => {
-      t.equal(ended, true)
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, 'JPEG')
-      t.end()
-    })
+    exiftool.on("exif", exif => {
+      expect(ended).toEqual(true);
+      expect(exif.length).toEqual(1);
+      expect(exif[0].FileType).toEqual("JPEG");
 
-    read.on('end', () => ended = true)
+      return done();
+    });
 
-    read.pipe(exif)
-  })
+    read.on("end", () => (ended = true));
+    read.pipe(exiftool);
+  });
 
-  t.test('pipe jpeg fast', t => {
-    const exif = exec(['-fast', '-'])
-    const read = createReadStream(join(FIXTURE_DIR, 'subway.jpeg'))
-    let ended = false
+  it("should pipe jpeg fast", done => {
+    const exiftool = exec("-fast", "-");
+    const read = createReadStream(join(FIXTURE_DIR, "subway.jpeg"));
+    let ended = false;
 
-    exif.on('exif', (exif) => {
-      t.equal(ended, false)
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, 'JPEG')
-      t.end()
-    })
+    exiftool.on("exif", exif => {
+      expect(ended).toEqual(false);
+      expect(exif.length).toEqual(1);
+      expect(exif[0].FileType).toEqual("JPEG");
 
-    read.on('end', () => ended = true)
+      return done();
+    });
 
-    read.pipe(exif)
-  })
+    read.on("end", () => (ended = true));
+    read.pipe(exiftool);
+  });
 
-  t.test('filename', t => {
-    const exif = exec(['-fast', join(FIXTURE_DIR, 'placeholder.png')])
+  it("should read from filename", done => {
+    const exiftool = exec("-fast", join(FIXTURE_DIR, "placeholder.png"));
 
-    exif.on('exif', (exif) => {
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, 'PNG')
+    exiftool.on("exif", exif => {
+      expect(exif.length).toEqual(1);
+      expect(exif[0].FileType).toEqual("PNG");
 
-      t.end()
-    })
-  })
+      return done();
+    });
+  });
 
-  t.test('short output', t => {
-    const exif = exec(['-S', join(FIXTURE_DIR, 'placeholder.png')])
+  it("should support short output", done => {
+    const exiftool = exec("-S", join(FIXTURE_DIR, "placeholder.png"));
 
-    exif.on('exif', (exif) => {
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, 'PNG')
+    exiftool.on("exif", exif => {
+      expect(exif.length).toEqual(1);
+      expect(exif[0].FileType).toEqual("PNG");
 
-      t.end()
-    })
-  })
+      return done();
+    });
+  });
 
-  t.test('group output', t => {
-    const exif = exec(['-g', join(FIXTURE_DIR, 'placeholder.png')])
+  it("should group output", done => {
+    const exiftool = exec("-g", join(FIXTURE_DIR, "placeholder.png"));
 
-    exif.on('exif', (exif) => {
-      t.equal(exif.length, 1)
-      t.equal(exif[0].File.FileType, 'PNG')
+    exiftool.on("exif", exif => {
+      expect(exif.length).toEqual(1);
+      expect(exif[0].File.FileType).toEqual("PNG");
 
-      t.end()
-    })
-  })
+      return done();
+    });
+  });
 
-  t.test('error', t => {
-    const exif = exec(['this_file_does_not_exist.png'])
+  it("should emit errors", done => {
+    const exiftool = exec("this_file_does_not_exist.png");
 
-    exif.on('error', (error) => {
-      t.equal(error.message, 'File not found: this_file_does_not_exist.png')
+    exiftool.on("error", error => {
+      expect(error.message).toEqual(
+        "Error: File not found - this_file_does_not_exist.png"
+      );
 
-      t.end()
-    })
-  })
+      return done();
+    });
+  });
 
-  t.test('parse multiple exif data', t => {
-    const exif = exec(['-common', FIXTURE_DIR])
+  it("should parse multiple exif data", done => {
+    const exiftool = exec("-common", FIXTURE_DIR);
 
-    exif.on('exif', (exif) => {
-      t.equal(exif.length, 2)
-      t.equal(exif[0].FileName, 'placeholder.png')
-      t.equal(exif[1].FileName, 'subway.jpeg')
+    exiftool.on("exif", exif => {
+      expect(exif.length).toEqual(2);
+      expect(exif[0].FileName).toEqual("placeholder.png");
+      expect(exif[1].FileName).toEqual("subway.jpeg");
 
-      t.end()
-    })
-  })
+      return done();
+    });
+  });
 
-  t.test('stay open', t => {
-    const exif = open()
-    let len = 0
+  it("should stay open", () => {
+    const exiftool = open();
 
-    exif.send([join(FIXTURE_DIR, 'placeholder.png')])
-    exif.send([join(FIXTURE_DIR, 'subway.jpeg')])
-    exif.send([join(FIXTURE_DIR, 'placeholder.png')])
-    exif.close()
+    const data = Promise.all([
+      exiftool.send(join(FIXTURE_DIR, "placeholder.png")),
+      exiftool.send(join(FIXTURE_DIR, "subway.jpeg")),
+      exiftool.send(join(FIXTURE_DIR, "placeholder.png"))
+    ]);
 
-    exif.on('exif', (exif) => {
-      len++
+    exiftool.close();
 
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, len === 2 ? 'JPEG' : 'PNG')
+    return data.then(exifs => {
+      expect(exifs.length).toEqual(3);
+      expect(exifs[0][0].FileType).toEqual("PNG");
+      expect(exifs[1][0].FileType).toEqual("JPEG");
+      expect(exifs[2][0].FileType).toEqual("PNG");
+    });
+  });
 
-      if (len === 3) {
-        t.end()
-      }
-    })
-  })
+  it("should stream multiple files", () => {
+    const exiftool = open();
 
-  t.test('stream multiple files', t => {
-    const exif = open()
-    let len = 0
+    const data = Promise.all([
+      exiftool.read(createReadStream(join(FIXTURE_DIR, "placeholder.png"))),
+      exiftool.read(createReadStream(join(FIXTURE_DIR, "subway.jpeg"))),
+      exiftool.read(createReadStream(join(FIXTURE_DIR, "placeholder.png")))
+    ]);
 
-    function cb (err: Error, exif: any[]) {
-      len++
+    exiftool.close();
 
-      t.equal(exif.length, 1)
-      t.equal(exif[0].FileType, len === 2 ? 'JPEG' : 'PNG')
-
-      if (len === 3) {
-        t.end(err)
-      }
-    }
-
-    createReadStream(join(FIXTURE_DIR, 'placeholder.png')).pipe(exif.stream([], cb))
-    createReadStream(join(FIXTURE_DIR, 'subway.jpeg')).pipe(exif.stream([], cb))
-    createReadStream(join(FIXTURE_DIR, 'placeholder.png')).pipe(exif.stream([], cb))
-
-    exif.close()
-  })
-
-  t.test('spawn sync', t => {
-    const exif = execSync(['-fast', join(FIXTURE_DIR, 'placeholder.png')])
-
-    t.equal(exif.length, 1)
-    t.equal(exif[0].FileType, 'PNG')
-    t.end()
-  })
-
-  t.test('spawn sync error', t => {
-    t.throws(
-      () => execSync(['this_file_does_not_exist.png']),
-      'File not found: this_file_does_not_exist.png'
-    )
-
-    t.end()
-  })
-})
+    return data.then(exifs => {
+      expect(exifs.length).toEqual(3);
+      expect(exifs[0][0].FileType).toEqual("PNG");
+      expect(exifs[1][0].FileType).toEqual("JPEG");
+      expect(exifs[2][0].FileType).toEqual("PNG");
+    });
+  });
+});

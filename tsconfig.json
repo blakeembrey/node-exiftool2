@@ -1,13 +1,16 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "rootDir": "src",
+    "target": "ES2018",
+    "lib": ["ES2018"],
     "outDir": "dist",
-    "module": "commonjs",
+    "rootDir": "src",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
     "declaration": true,
-    "noImplicitAny": true,
-    "removeComments": true,
     "sourceMap": true,
-    "inlineSources": true
-  }
+    "inlineSources": true,
+    "esModuleInterop": true
+  },
+  "include": ["src/**/*"]
 }

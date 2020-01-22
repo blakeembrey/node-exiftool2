@@ -1,204 +1,168 @@
-import { Writable } from 'stream'
-import { spawn, spawnSync, ChildProcess } from 'child_process'
-import { join } from 'path'
-import { createWriteStream, WriteStream, unlink } from 'fs'
-import { tmpdir } from 'os'
+import { Writable, Readable } from "stream";
+import { spawn, ChildProcess } from "child_process";
+import { join } from "path";
+import { createWriteStream, unlink } from "fs";
+import { tmpdir } from "os";
+import { promisify } from "util";
+
+const pUnlink = promisify(unlink);
 
 /**
  * Tooling constants.
  */
-const BIN_PATH = join(__dirname, '../vendor/Image-ExifTool-10.24/exiftool')
-const DELIMITER = '\n}]\n'
-
-/**
- * Common spawn options.
- */
-const SPAWN_OPTIONS = {
-  encoding: 'utf8' as 'utf8'
-}
-
-/**
- * Exec interface extends `Writable`.
- */
-export interface Exec extends Writable {
-  on (event: 'exif', listener: (exif: any[]) => void): this
-  on (event: 'error', listener: (error: Error) => void): this
-  on (event: string, listener: Function): this
-  send (args: string[]): boolean
-  close (): boolean
-}
+const BIN_PATH = join(__dirname, "../vendor/Image-ExifTool-11.84/exiftool");
+const DELIMITER = "\n}]\n";
 
 /**
  * Exec interface for `exiftool`.
  */
-export class Exec extends Writable implements Exec {
+export class Exec extends Writable {
+  process: ChildProcess;
+  pending: number;
 
-  process: ChildProcess
-  pending: number
+  constructor(args: string[], pending: number) {
+    super();
 
-  constructor (args: string[], pending: number) {
-    super()
+    this.process = spawn(BIN_PATH, args);
+    this.pending = pending;
 
-    this.process = spawn(BIN_PATH, args)
-    this.pending = pending
+    let stdout = "";
+    let stderr = "";
 
-    let stdout = ''
-    let stderr = ''
+    this.process.stdout?.on("data", (chunk: Buffer) => {
+      let offset: number;
 
-    this.process.stdout.on('data', (chunk: Buffer) => {
-      let offset: number
+      stdout += chunk.toString("utf8");
 
-      stdout += chunk.toString('utf8')
-
-      // tslint:disable-next-line
       while ((offset = stdout.indexOf(DELIMITER)) > -1) {
-        const len = offset + DELIMITER.length
-        const data = stdout.substr(0, len)
+        const len = offset + DELIMITER.length;
+        const data = stdout.substr(0, len);
 
-        stdout = stdout.substr(len)
+        stdout = stdout.substr(len);
 
         try {
-          this.pending--
-          this.emit('exif', JSON.parse(data))
+          this.pending--;
+          this.emit("exif", JSON.parse(data));
         } catch (err) {
-          this.emit('error', err)
+          this.emit("error", err);
         }
       }
-    })
+    });
 
-    this.process.stderr.on('data', (chunk: Buffer) => {
-      let offset: number
+    this.process.stderr?.on("data", (chunk: Buffer) => {
+      let offset: number;
 
-      stderr += chunk.toString('utf8')
+      stderr += chunk.toString("utf8");
 
-      // tslint:disable-next-line
-      while ((offset = stderr.indexOf('\n')) > -1) {
-        const data = stderr.substr(0, offset)
+      while ((offset = stderr.indexOf("\n")) > -1) {
+        const data = stderr.substr(0, offset);
 
-        stderr = stderr.substr(offset + 1)
+        stderr = stderr.substr(offset + 1);
 
         if (data.length) {
-          this.pending--
-          this.emit('error', new Error(data))
+          this.pending--;
+          this.emit("error", new Error(data));
         }
       }
-    })
+    });
 
-    this.process.stdout.on('error', this.emit.bind(this, 'error'))
-    this.process.stderr.on('error', this.emit.bind(this, 'error'))
+    this.process.stdout?.on("error", this.emit.bind(this, "error"));
+    this.process.stderr?.on("error", this.emit.bind(this, "error"));
 
-    this.process.stdin.on('error', (error: Error) => {
-      const code = (error as any).code
+    this.process.stdin?.on("error", (error: Error) => {
+      const code = (error as any).code;
 
-      if (code !== 'EPIPE' && code !== 'ECONNRESET') {
-        this.emit('error', error)
+      if (code !== "EPIPE" && code !== "ECONNRESET") {
+        this.emit("error", error);
       }
-    })
+    });
   }
 
-  _write (chunk: Buffer, encoding: string, cb: Function) {
-    if (!this.process.stdin.writable) {
-      return cb()
-    }
-
-    return this.process.stdin.write(chunk, encoding, () => cb())
+  _write(chunk: Buffer, encoding: string, cb: (error?: Error | null) => void) {
+    if (!this.process.stdin || !this.process.stdin.writable) return cb();
+    return this.process.stdin.write(chunk, encoding, cb);
   }
 
-  end () {
-    return this.process.stdin.end.apply(this.process.stdin, arguments)
+  _destroy() {
+    return this.process.kill("SIGTERM");
   }
 
-  send (args?: string[], cb?: (error?: Error, exif?: any[]) => void) {
-    // Allow callbacks for simpler handling of multiple `exif` events.
-    if (cb) {
-      const len = this.pending
-      let count = 0
-
-      const handle = (error: Error, exif?: any[]) => {
-        // Ignore previously queued exif events.
-        if (len > count) {
-          count++
-          return
-        }
-
-        this.removeListener('exif', onexif)
-        this.removeListener('error', onerror)
-
-        return cb(error, exif)
-      }
-
-      const onexif = (exif: any[]) => handle(null, exif)
-      const onerror = (error: Error) => handle(error)
-
-      this.on('exif', onexif)
-      this.on('error', onerror)
-    }
-
-    // Increment the queue count. Exiftool emits are ordered.
-    this.pending++
-
-    if (args) {
-      for (const arg of args) {
-        this.write(`${arg}\n`)
-      }
-    }
-
-    return this.write('-q\n-json\n-execute\n')
+  _final() {
+    return this.process.stdin?.end();
   }
 
-  stream (args: string[] = [], cb?: (error?: Error, exif?: any[]) => void): WriteStream {
-    const filename = join(tmpdir(), `exiftool2_${Math.random().toString(36).substr(2)}`)
-    const stream = createWriteStream(filename)
-
-    this.send([filename, ...args], (error, exif) => {
-      stream.end()
-
-      // Remove the temporary file on parse.
-      unlink(filename, (unlinkError) => {
-        if (cb) {
-          return cb(error || unlinkError, exif)
-        }
-      })
-    })
-
-    return stream
+  command(...args: string[]) {
+    for (const arg of args) this.write(`${arg}\n`);
   }
 
-  close () {
-    return this.send(['-stay_open', 'False'])
+  close() {
+    return this.command("-stay_open", "False");
   }
 
+  execute(...args: string[]) {
+    return this.command(...args, "-q", "-json", "-execute");
+  }
+
+  send(...args: string[]): Promise<any[]> {
+    let remaining = this.pending;
+    this.pending++; // Track pending emit.
+    this.execute(...args); // Send args to `execute`.
+
+    return new Promise((resolve, reject) => {
+      const onexif = (exif: any[]) => {
+        if (remaining-- > 0) return;
+        removeListeners();
+        return resolve(exif);
+      };
+
+      const onerror = (err: Error) => {
+        if (remaining-- > 0) return;
+        removeListeners();
+        return reject(err);
+      };
+
+      const removeListeners = () => {
+        this.removeListener("exif", onexif);
+        this.removeListener("error", onerror);
+      };
+
+      this.on("exif", onexif);
+      this.on("error", onerror);
+    });
+  }
+
+  read(readable: Readable, ...args: string[]): Promise<any[]> {
+    const tmpFilename = join(
+      tmpdir(),
+      `exiftool2_${Math.random()
+        .toString(36)
+        .substr(2)}`
+    );
+
+    const dest = readable.pipe(createWriteStream(tmpFilename));
+
+    const cleanup = () => {
+      dest.close(); // Close file stream before unlinking.
+      return pUnlink(tmpFilename);
+    };
+
+    return this.send(tmpFilename, ...args).then(
+      exif => cleanup().then(() => exif),
+      err => cleanup().then(() => Promise.reject(err))
+    );
+  }
 }
 
 /**
  * Handle `-stay_open` arguments.
  */
-export function open () {
-  return new Exec(['-stay_open', 'True', '-@', '-'], 0)
+export function open() {
+  return new Exec(["-stay_open", "True", "-@", "-"], 0);
 }
 
 /**
  * Execute a command, returning on data.
  */
-export function exec (args: string[]) {
-  return new Exec(['-q', '-json', ...args], 1)
-}
-
-/**
- * Synchronous execution of `exiftool`.
- */
-export function execSync (args: string[]) {
-  const { stdout, stderr } = spawnSync(BIN_PATH, ['-q', '-json', ...args], SPAWN_OPTIONS)
-  const stdoutOffset = stdout.indexOf(DELIMITER)
-  const stderrOffset = stderr.indexOf('\n')
-
-  if (stderrOffset > -1) {
-    throw new Error(stderr.substr(0, stderrOffset))
-  }
-
-  if (stdoutOffset > -1) {
-    return JSON.parse(stdout.substr(0, stdoutOffset + DELIMITER.length))
-  }
-
-  throw new Error('No data from `exiftool`')
+export function exec(...args: string[]) {
+  return new Exec(["-q", "-json", ...args], 1);
 }
